@@ -140,8 +140,12 @@ builder.Services.AddAuthentication(options =>
 .AddGoogle("Google", options =>
 {
     var googleSection = builder.Configuration.GetSection("Authentication:Google");
-    var googleClientId = googleSection["ClientId"] ?? Environment.GetEnvironmentVariable("Authentication__Google__ClientId");
-    var googleClientSecret = googleSection["ClientSecret"] ?? Environment.GetEnvironmentVariable("Authentication__Google__ClientSecret");
+    var googleClientId = !string.IsNullOrWhiteSpace(googleSection["ClientId"])
+        ? googleSection["ClientId"]
+        : Environment.GetEnvironmentVariable("Authentication__Google__ClientId");
+    var googleClientSecret = !string.IsNullOrWhiteSpace(googleSection["ClientSecret"])
+        ? googleSection["ClientSecret"]
+        : Environment.GetEnvironmentVariable("Authentication__Google__ClientSecret");
 
     if (string.IsNullOrWhiteSpace(googleClientId) || string.IsNullOrWhiteSpace(googleClientSecret))
     {
