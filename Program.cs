@@ -145,8 +145,8 @@ builder.Services.AddAuthentication(options =>
         throw new Exception("Google OAuth client id/secret not configured. Set Authentication__Google__ClientId and Authentication__Google__ClientSecret as environment variables or in appsettings.");
     }
 
-    options.ClientId = googleSection["ClientId"];
-    options.ClientSecret = googleSection["ClientSecret"];
+    options.ClientId = googleClientId;
+    options.ClientSecret = googleClientSecret;
 
     options.SignInScheme = "ExternalCookie";
 
