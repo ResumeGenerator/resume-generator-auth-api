@@ -21,8 +21,10 @@ public class TokenService : ITokenService
 
     public async Task<string> CreateTokenAsync(ApplicationUser user, IList<string>? roles = null)
     {
-        var key = Environment.GetEnvironmentVariable("JWT_KEY") ?? _config["Jwt:Key"];
-        if (string.IsNullOrEmpty(key)) throw new Exception("JWT key not configured");
+        var key = GetRequiredJwtSetting("Jwt:Key", "JWT_KEY");
+        var issuer = GetRequiredJwtSetting("Jwt:Issuer", "JWT_ISSUER");
+        var audience = GetRequiredJwtSetting("Jwt:Audience", "JWT_AUDIENCE");
+        var expiryInMinutes = GetJwtExpiryInMinutes();
 
         var claims = new List<Claim>
         {
@@ -49,11 +51,38 @@ public class TokenService : ITokenService
         var creds = new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)), SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
+            issuer: issuer,
+            audience: audience,
             claims: claims,
-            expires: DateTime.UtcNow.AddHours(12),
+            expires: DateTime.UtcNow.AddMinutes(expiryInMinutes),
             signingCredentials: creds
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private string GetRequiredJwtSetting(string configKey, string envKey)
+    {
+        var value = Environment.GetEnvironmentVariable(envKey)
+            ?? Environment.GetEnvironmentVariable(configKey.Replace(":", "__"))
+            ?? _config[configKey];
+
+        if (string.IsNullOrWhiteSpace(value))
+            throw new Exception($"{envKey} env var, {configKey.Replace(":", "__")} env var, or {configKey} config is required");
+
+        return value;
+    }
+
+    private int GetJwtExpiryInMinutes()
+    {
+        var value = Environment.GetEnvironmentVariable("JWT_EXPIRY_IN_MINUTES")
+            ?? Environment.GetEnvironmentVariable("Jwt__ExpiryInMinutes")
+            ?? _config["Jwt:ExpiryInMinutes"]
+            ?? "60";
+
+        if (!int.TryParse(value, out var expiryInMinutes) || expiryInMinutes <= 0)
+            throw new Exception("JWT_EXPIRY_IN_MINUTES env var, Jwt__ExpiryInMinutes env var, or Jwt:ExpiryInMinutes config must be a positive whole number");
+
+        return expiryInMinutes;
     }
 }

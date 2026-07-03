@@ -107,13 +107,23 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     .AddDefaultTokenProviders();
 
 
-var jwtKey =
-    Environment.GetEnvironmentVariable("JWT_KEY")           
-    ?? Environment.GetEnvironmentVariable("Jwt__Key")       
-    ?? builder.Configuration["Jwt:Key"];                    
+static string? ReadSetting(IConfiguration configuration, string configKey, string envKey)
+{
+    return Environment.GetEnvironmentVariable(envKey)
+        ?? Environment.GetEnvironmentVariable(configKey.Replace(":", "__"))
+        ?? configuration[configKey];
+}
+
+var jwtKey = ReadSetting(builder.Configuration, "Jwt:Key", "JWT_KEY");
+var jwtIssuer = ReadSetting(builder.Configuration, "Jwt:Issuer", "JWT_ISSUER");
+var jwtAudience = ReadSetting(builder.Configuration, "Jwt:Audience", "JWT_AUDIENCE");
 
 if (string.IsNullOrWhiteSpace(jwtKey))
     throw new Exception("JWT_KEY env var, Jwt__Key env var, or Jwt:Key config is required (tried JWT_KEY, Jwt__Key, appsettings.json)");
+if (string.IsNullOrWhiteSpace(jwtIssuer))
+    throw new Exception("JWT_ISSUER env var, Jwt__Issuer env var, or Jwt:Issuer config is required (tried JWT_ISSUER, Jwt__Issuer, appsettings.json)");
+if (string.IsNullOrWhiteSpace(jwtAudience))
+    throw new Exception("JWT_AUDIENCE env var, Jwt__Audience env var, or Jwt:Audience config is required (tried JWT_AUDIENCE, Jwt__Audience, appsettings.json)");
 
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
 builder.Services.AddAuthentication(options =>
@@ -127,11 +137,14 @@ builder.Services.AddAuthentication(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
     {
-        ValidateIssuer = false,
-        ValidateAudience = false,
+        ValidateIssuer = true,
+        ValidIssuer = jwtIssuer,
+        ValidateAudience = true,
+        ValidAudience = jwtAudience,
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = signingKey,
-        ValidateLifetime = true
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero
     };
 })
 // Cookie used ONLY during Google OAuth flow
