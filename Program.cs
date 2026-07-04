@@ -153,6 +153,11 @@ static string ReplaceQueryParameter(string uri, string parameterName, string par
     return QueryHelpers.AddQueryString(parsedUri.GetLeftPart(UriPartial.Path), queryParameters);
 }
 
+static string AddQueryParameter(string uri, string parameterName, string parameterValue)
+{
+    return QueryHelpers.AddQueryString(uri, parameterName, parameterValue);
+}
+
 var jwtKey = ReadSetting(builder.Configuration, "Jwt:Key", "JWT_KEY");
 var jwtIssuer = ReadSetting(builder.Configuration, "Jwt:Issuer", "JWT_ISSUER");
 var jwtAudience = ReadSetting(builder.Configuration, "Jwt:Audience", "JWT_AUDIENCE");
@@ -237,6 +242,16 @@ builder.Services.AddAuthentication(options =>
             return Task.CompletedTask;
         };
     }
+
+    options.Events.OnRemoteFailure = context =>
+    {
+        Console.WriteLine($"Google OAuth failed before app callback: {context.Failure?.Message}");
+
+        context.HandleResponse();
+        var failureUrl = AddQueryParameter(frontendPopupUrl, "error", "google_oauth_failed");
+        context.Response.Redirect(failureUrl);
+        return Task.CompletedTask;
+    };
 });
 
 
@@ -356,7 +371,10 @@ async (HttpContext httpContext, UserManager<ApplicationUser> userManager, IToken
 
     var result = await httpContext.AuthenticateAsync("ExternalCookie");
     if (!result.Succeeded || result.Principal == null)
-        return Results.Unauthorized();
+    {
+        Console.WriteLine($"Google external cookie authentication failed: {result.Failure?.Message}");
+        return Results.Redirect(AddQueryParameter(redirectUri, "error", "external_login_failed"));
+    }
 
     var email = result.Principal.FindFirst(ClaimTypes.Email)?.Value;
     if (string.IsNullOrWhiteSpace(email))
@@ -383,7 +401,8 @@ async (HttpContext httpContext, UserManager<ApplicationUser> userManager, IToken
     // Issue JWT for the user
     var token = await tokenService.CreateTokenAsync(user);
 
-    var finalUrl = $"{redirectUri}?token={WebUtility.UrlEncode(token)}";
+    var finalUrl = AddQueryParameter(redirectUri, "token", token);
+    Console.WriteLine($"Google login succeeded, redirecting to SPA: {redirectUri}");
     return Results.Redirect(finalUrl);
 })
 .WithName("GoogleCallback");
