@@ -21,7 +21,9 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor |
+                               ForwardedHeaders.XForwardedProto |
+                               ForwardedHeaders.XForwardedHost;
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 });
@@ -306,11 +308,11 @@ async (HttpContext httpContext, UserManager<ApplicationUser> userManager, IToken
         return Results.Unauthorized();
 
     var email = result.Principal.FindFirst(ClaimTypes.Email)?.Value;
+    if (string.IsNullOrWhiteSpace(email))
+        return Results.BadRequest(new { error = "Google account did not provide an email address" });
 
-    var user = await userManager.FindByEmailAsync(email) ??
-        new ApplicationUser { Email = email, UserName = email, EmailConfirmed = true };
-
-    if (user == null)
+    var user = await userManager.FindByEmailAsync(email);
+    if (user is null)
     {
         user = new ApplicationUser
         {
@@ -325,7 +327,7 @@ async (HttpContext httpContext, UserManager<ApplicationUser> userManager, IToken
     }
 
     // Clear the external cookie
-    await httpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+    await httpContext.SignOutAsync("ExternalCookie");
 
     // Issue JWT for the user
     var token = await tokenService.CreateTokenAsync(user);
