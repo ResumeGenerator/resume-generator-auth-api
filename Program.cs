@@ -222,7 +222,7 @@ builder.Services.AddAuthentication(options =>
     // IMPORTANT:
     // This path is owned by the Google middleware ONLY.
     // We will NOT map an endpoint on this path.
-    options.CallbackPath = "/signin-google";
+    options.CallbackPath = "/signin-google/";
 
     if (!string.IsNullOrWhiteSpace(apiBaseUrl))
     {
