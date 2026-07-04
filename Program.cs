@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Collections;
@@ -36,12 +37,10 @@ var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>() ?? Array.Empty<string>();
 
-var apiBaseUrl = builder.Configuration["Api:BaseUrl"]
-    ?? Environment.GetEnvironmentVariable("API_BASE_URL")
-    ?? ""; // if empty, relative callback paths are used
+var apiBaseUrl = NormalizeBaseUrl(ReadSetting(builder.Configuration, "Api:BaseUrl", "API_BASE_URL"))
+    ?? ""; // if empty, the current request host is used
 
-var frontendPopupUrl = builder.Configuration["Frontend:PopupCompleteUrl"]
-    ?? Environment.GetEnvironmentVariable("FRONTEND_POPUP_COMPLETE_URL")
+var frontendPopupUrl = ReadSetting(builder.Configuration, "Frontend:PopupCompleteUrl", "FRONTEND_POPUP_COMPLETE_URL")
     ?? "http://localhost:4200/auth/popup-complete";
 
 Console.WriteLine($"apiBaseUrl {apiBaseUrl}");
@@ -116,6 +115,44 @@ static string? ReadSetting(IConfiguration configuration, string configKey, strin
         ?? configuration[configKey];
 }
 
+static string? NormalizeBaseUrl(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+        return null;
+
+    return value.Trim().TrimEnd('/');
+}
+
+static string ReplaceQueryParameter(string uri, string parameterName, string parameterValue)
+{
+    var parsedUri = new Uri(uri);
+    var queryParameters = new List<KeyValuePair<string, string?>>();
+    var replaced = false;
+
+    foreach (var parameter in QueryHelpers.ParseQuery(parsedUri.Query))
+    {
+        foreach (var value in parameter.Value)
+        {
+            if (parameter.Key.Equals(parameterName, StringComparison.Ordinal))
+            {
+                queryParameters.Add(new KeyValuePair<string, string?>(parameter.Key, parameterValue));
+                replaced = true;
+            }
+            else
+            {
+                queryParameters.Add(new KeyValuePair<string, string?>(parameter.Key, value));
+            }
+        }
+    }
+
+    if (!replaced)
+    {
+        queryParameters.Add(new KeyValuePair<string, string?>(parameterName, parameterValue));
+    }
+
+    return QueryHelpers.AddQueryString(parsedUri.GetLeftPart(UriPartial.Path), queryParameters);
+}
+
 var jwtKey = ReadSetting(builder.Configuration, "Jwt:Key", "JWT_KEY");
 var jwtIssuer = ReadSetting(builder.Configuration, "Jwt:Issuer", "JWT_ISSUER");
 var jwtAudience = ReadSetting(builder.Configuration, "Jwt:Audience", "JWT_AUDIENCE");
@@ -186,6 +223,20 @@ builder.Services.AddAuthentication(options =>
     // This path is owned by the Google middleware ONLY.
     // We will NOT map an endpoint on this path.
     options.CallbackPath = "/signin-google";
+
+    if (!string.IsNullOrWhiteSpace(apiBaseUrl))
+    {
+        options.Events.OnRedirectToAuthorizationEndpoint = context =>
+        {
+            var googleRedirectUri = $"{apiBaseUrl}{options.CallbackPath}";
+            var authorizationEndpoint = ReplaceQueryParameter(context.RedirectUri, "redirect_uri", googleRedirectUri);
+
+            Console.WriteLine($"Google OAuth redirect_uri: {googleRedirectUri}");
+
+            context.Response.Redirect(authorizationEndpoint);
+            return Task.CompletedTask;
+        };
+    }
 });
 
 
