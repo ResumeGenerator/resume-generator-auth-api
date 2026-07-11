@@ -40,10 +40,16 @@ var allowedOrigins = builder.Configuration
 var apiBaseUrl = NormalizeBaseUrl(ReadSetting(builder.Configuration, "Api:BaseUrl", "API_BASE_URL"))
     ?? ""; // if empty, the current request host is used
 
+var googlePublicBaseUrl = NormalizeBaseUrl(ReadSetting(
+    builder.Configuration,
+    "Authentication:Google:PublicBaseUrl",
+    "Authentication__Google__PublicBaseUrl"));
+
 var frontendPopupUrl = ReadSetting(builder.Configuration, "Frontend:PopupCompleteUrl", "FRONTEND_POPUP_COMPLETE_URL")
     ?? "http://localhost:4200/auth/popup-complete";
 
 Console.WriteLine($"apiBaseUrl {apiBaseUrl}");
+Console.WriteLine($"googlePublicBaseUrl {googlePublicBaseUrl}");
 Console.WriteLine($"frontendPopupUrl {frontendPopupUrl}");
 
 builder.Services.AddCors(options =>
@@ -229,11 +235,11 @@ builder.Services.AddAuthentication(options =>
     // We will NOT map an endpoint on this path.
     options.CallbackPath = "/signin-google/";
 
-    if (!string.IsNullOrWhiteSpace(apiBaseUrl))
+    if (!string.IsNullOrWhiteSpace(googlePublicBaseUrl))
     {
         options.Events.OnRedirectToAuthorizationEndpoint = context =>
         {
-            var googleRedirectUri = $"{apiBaseUrl}{options.CallbackPath}";
+            var googleRedirectUri = $"{googlePublicBaseUrl}{options.CallbackPath}";
             var authorizationEndpoint = ReplaceQueryParameter(context.RedirectUri, "redirect_uri", googleRedirectUri);
 
             Console.WriteLine($"Google OAuth redirect_uri: {googleRedirectUri}");
