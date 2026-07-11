@@ -230,6 +230,11 @@ builder.Services.AddAuthentication(options =>
 
     options.SaveTokens = true;
 
+    // Google returns with a top-level GET, so Lax is sufficient and avoids the
+    // correlation cookie being rejected as a third-party SameSite=None cookie.
+    options.CorrelationCookie.SameSite = SameSiteMode.Lax;
+    options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
+
     // IMPORTANT:
     // This path is owned by the Google middleware ONLY.
     // We will NOT map an endpoint on this path.
@@ -352,23 +357,21 @@ app.MapGet("/api/auth/google-login", async (HttpContext httpContext) =>
     if (string.IsNullOrEmpty(redirectUri))
         redirectUri = frontendPopupUrl;
 
-    // OAuth correlation cookies are scoped to the host that starts the challenge.
-    // If this endpoint was reached through the API gateway, move the browser to
-    // the auth API before challenging Google so the callback receives that cookie.
-    if (!string.IsNullOrWhiteSpace(googlePublicBaseUrl))
+    // A gateway can replace the forwarded host, so Request.Host is not a reliable
+    // way to tell which hostname is visible in the browser. Always perform one
+    // explicit redirect to the auth API before creating the correlation cookie.
+    var isOnCanonicalAuthHost = httpContext.Request.Query["authHost"].ToString() == "1";
+    if (!string.IsNullOrWhiteSpace(googlePublicBaseUrl) && !isOnCanonicalAuthHost)
     {
-        var requestBaseUrl = NormalizeBaseUrl($"{httpContext.Request.Scheme}://{httpContext.Request.Host}");
-        if (!string.Equals(requestBaseUrl, googlePublicBaseUrl, StringComparison.OrdinalIgnoreCase))
-        {
-            var authApiLoginUrl = AddQueryParameter(
-                $"{googlePublicBaseUrl}/api/auth/google-login",
-                "redirectUri",
-                redirectUri);
+        var authApiLoginUrl = AddQueryParameter(
+            $"{googlePublicBaseUrl}/api/auth/google-login",
+            "redirectUri",
+            redirectUri);
+        authApiLoginUrl = AddQueryParameter(authApiLoginUrl, "authHost", "1");
 
-            Console.WriteLine($"Moving Google login to auth API host: {authApiLoginUrl}");
-            httpContext.Response.Redirect(authApiLoginUrl);
-            return;
-        }
+        Console.WriteLine($"Moving Google login to auth API host: {authApiLoginUrl}");
+        httpContext.Response.Redirect(authApiLoginUrl);
+        return;
     }
 
     Console.WriteLine($"Google login requested, redirectUri: {redirectUri}");
