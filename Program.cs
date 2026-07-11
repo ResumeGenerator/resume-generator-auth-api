@@ -352,6 +352,25 @@ app.MapGet("/api/auth/google-login", async (HttpContext httpContext) =>
     if (string.IsNullOrEmpty(redirectUri))
         redirectUri = frontendPopupUrl;
 
+    // OAuth correlation cookies are scoped to the host that starts the challenge.
+    // If this endpoint was reached through the API gateway, move the browser to
+    // the auth API before challenging Google so the callback receives that cookie.
+    if (!string.IsNullOrWhiteSpace(googlePublicBaseUrl))
+    {
+        var requestBaseUrl = NormalizeBaseUrl($"{httpContext.Request.Scheme}://{httpContext.Request.Host}");
+        if (!string.Equals(requestBaseUrl, googlePublicBaseUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            var authApiLoginUrl = AddQueryParameter(
+                $"{googlePublicBaseUrl}/api/auth/google-login",
+                "redirectUri",
+                redirectUri);
+
+            Console.WriteLine($"Moving Google login to auth API host: {authApiLoginUrl}");
+            httpContext.Response.Redirect(authApiLoginUrl);
+            return;
+        }
+    }
+
     Console.WriteLine($"Google login requested, redirectUri: {redirectUri}");
 
     var props = new AuthenticationProperties
